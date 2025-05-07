@@ -5,6 +5,14 @@ import java.util.ArrayList;
 import java.util.Random;
 
 public class SpaceInvaders extends JPanel implements Runnable, KeyListener {
+    private LevelManager levelManager = new LevelManager();
+    private boolean showLevelText = true;
+    private long levelDisplayStartTime;
+    MUSIC getBackgroundMusic;
+
+
+
+
     int tileSize = 32;
     int rows = 16;
     int columns = 16;
@@ -57,12 +65,21 @@ public class SpaceInvaders extends JPanel implements Runnable, KeyListener {
 
     Thread gameThread;
     boolean gameOver = false;
+    boolean isRunning = true;
     int score = 0;
 
-    ImageIcon backgroundGif = new ImageIcon(getClass().getResource("BackGround/Black And White Falling GIF by Pi-Slices.gif"));
+    ImageIcon backgroundGif = new ImageIcon(getClass().getResource("/BackGround/Black And White Falling GIF by Pi-Slices.gif"));
     Image backgroundImage = backgroundGif.getImage();
 
-    public SpaceInvaders() {
+    MUSIC backgroundMusic = new MUSIC();
+    boolean gameOverSoundPlayed = false;
+
+    public SpaceInvaders(MUSIC music) {
+        this.backgroundMusic = music;
+
+        backgroundMusic.gameMusic("/SOUND/space-invaders-classic-arcade-game-116826.wav");
+
+
         setPreferredSize(new Dimension(boardWidth, boardHeight));
         setFocusable(true);
         addKeyListener(this);
@@ -83,6 +100,8 @@ public class SpaceInvaders extends JPanel implements Runnable, KeyListener {
         alienArray = new ArrayList<>();
         bulletArray = new ArrayList<>();
 
+
+
         createAliens();
 
         gameThread = new Thread(this);
@@ -95,16 +114,24 @@ public class SpaceInvaders extends JPanel implements Runnable, KeyListener {
         long targetTime = 1000 / fps;
 
         while (true) {
-            move();
-            repaint();
+            if (isRunning) {
+                move();
+                repaint();
 
-            if (gameOver) {
-                try {
-                    Thread.sleep(2000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
+                if (gameOver) {
+                    if (!gameOverSoundPlayed) {
+                        backgroundMusic.stopMusic();
+                        backgroundMusic.playEffectSound("/SOUND/game-over.wav");
+                        gameOverSoundPlayed = true;
+                    }
+
+                    try {
+                        Thread.sleep(2000);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                    break;
                 }
-                break;
             }
 
             try {
@@ -120,6 +147,12 @@ public class SpaceInvaders extends JPanel implements Runnable, KeyListener {
         super.paintComponent(g);
         g.drawImage(backgroundImage, 0, 0, getWidth(), getHeight(), this);
         draw(g);
+
+        if (gameOver && !gameOverSoundPlayed) {
+
+            backgroundMusic.playEffectSound("/SOUND/game-over-31-179699.wav");
+            gameOverSoundPlayed = true;
+        }
     }
 
     public void draw(Graphics g) {
@@ -140,10 +173,32 @@ public class SpaceInvaders extends JPanel implements Runnable, KeyListener {
 
         g.setColor(Color.white);
         g.setFont(new Font("Arial", Font.PLAIN, 32));
+
         if (gameOver) {
-            g.drawString("Game Over: " + score, 10, 35);
+
+            g.setFont(new Font("Arial", Font.BOLD, 64));
+            FontMetrics fm = g.getFontMetrics();
+            String gameOverText = "GAME OVER";
+            int x = (boardWidth - fm.stringWidth(gameOverText)) / 2;
+            int y = boardHeight / 2;
+            g.drawString(gameOverText, x, y);
+
+            g.setFont(new Font("Arial", Font.PLAIN, 32));
+            String scoreText = "Score: " + score;
+            int scoreX = (boardWidth - g.getFontMetrics().stringWidth(scoreText)) / 2;
+            g.drawString(scoreText, scoreX, y + 50);
         } else {
-            g.drawString(String.valueOf(score), 10, 35);
+            g.drawString("Score: " + score, 10, 35);
+        }
+
+        if (!isRunning && !gameOver) {
+            g.setColor(Color.WHITE);
+            g.setFont(new Font("Arial", Font.BOLD, 48));
+            FontMetrics fm = g.getFontMetrics();
+            String pauseText = "Game Paused";
+            int x = (boardWidth - fm.stringWidth(pauseText)) / 2;
+            int y = boardHeight / 2;
+            g.drawString(pauseText, x, y);
         }
     }
 
@@ -179,9 +234,7 @@ public class SpaceInvaders extends JPanel implements Runnable, KeyListener {
             }
         }
 
-        while (bulletArray.size() > 0 && (bulletArray.get(0).used || bulletArray.get(0).y < 0)) {
-            bulletArray.remove(0);
-        }
+        bulletArray.removeIf(b -> b.used || b.y < 0);
 
         if (alienCount == 0) {
             score += alienColumns * alienRows * 100;
@@ -191,6 +244,7 @@ public class SpaceInvaders extends JPanel implements Runnable, KeyListener {
             bulletArray.clear();
             createAliens();
         }
+
     }
 
     public void createAliens() {
@@ -219,10 +273,12 @@ public class SpaceInvaders extends JPanel implements Runnable, KeyListener {
     }
 
     @Override
-    public void keyPressed(KeyEvent e) {}
+    public void keyPressed(KeyEvent e) {
+    }
 
     @Override
-    public void keyTyped(KeyEvent e) {}
+    public void keyTyped(KeyEvent e) {
+    }
 
     @Override
     public void keyReleased(KeyEvent e) {
@@ -230,15 +286,23 @@ public class SpaceInvaders extends JPanel implements Runnable, KeyListener {
             resetGame();
             gameThread = new Thread(this);
             gameThread.start();
-        } else if (e.getKeyCode() == KeyEvent.VK_LEFT && ship.x - shipVelocityX >= 0) {
+        } else if (e.getKeyCode() == KeyEvent.VK_LEFT && ship.x - shipVelocityX >= 0 && isRunning) {
             ship.x -= shipVelocityX;
-        } else if (e.getKeyCode() == KeyEvent.VK_RIGHT && ship.x + shipVelocityX + ship.width <= boardWidth) {
+        } else if (e.getKeyCode() == KeyEvent.VK_RIGHT && ship.x + shipVelocityX + ship.width <= boardWidth && isRunning) {
             ship.x += shipVelocityX;
-        } else if (e.getKeyCode() == KeyEvent.VK_SPACE) {
+        } else if (e.getKeyCode() == KeyEvent.VK_SPACE && isRunning) {
             Block bullet = new Block(ship.x + shipWidth * 15 / 32, ship.y, bulletWidth, bulletHeight, null);
             bulletArray.add(bullet);
-            MUSIC music = new MUSIC();
-            music.playEffectSound("SOUND/laser-zap-90575.wav");
+            backgroundMusic.playEffectSound("/SOUND/laser-zap-90575.wav");
+        } else if (e.getKeyCode() == KeyEvent.VK_P) {
+            isRunning = !isRunning;
+            if (isRunning) {
+                backgroundMusic.resumeBackgroundMusic();
+            } else {
+                backgroundMusic.pauseBackgroundMusic();
+            }
+        } else if (e.getKeyCode() == KeyEvent.VK_R) {
+            resetGame();
         }
     }
 
@@ -247,11 +311,14 @@ public class SpaceInvaders extends JPanel implements Runnable, KeyListener {
         bulletArray.clear();
         alienArray.clear();
         gameOver = false;
+        isRunning = true;
         score = 0;
         alienColumns = 3;
         alienRows = 2;
         alienVelocityX = 1;
         createAliens();
+        gameOverSoundPlayed = false;
+        backgroundMusic.stopMusic();
+        backgroundMusic.gameMusic("/SOUND/space-invaders-classic-arcade-game-116826.wav");
     }
 }
-

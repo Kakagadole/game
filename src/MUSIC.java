@@ -1,39 +1,77 @@
 import javax.sound.sampled.*;
-import java.io.File;
-import java.io.IOException;
-
+import java.io.*;
 
 public class MUSIC {
     private Clip clip;
+    private Long currentFrame = 0L;
+    private AudioInputStream audioStream;
+    private String currentFilePath;
+
     public void gameMusic(String filePath) {
         try {
-            File soundFile = new File(filePath);
-            AudioInputStream audioIn = AudioSystem.getAudioInputStream(getClass().getResource(filePath));
+            currentFilePath = filePath;
+
+            InputStream audioSrc = getClass().getResourceAsStream(filePath);
+            if (audioSrc == null) {
+                System.out.println("Audio file not found: " + filePath);
+                return;
+            }
+
+            InputStream bufferedIn = new BufferedInputStream(audioSrc);
+            audioStream = AudioSystem.getAudioInputStream(bufferedIn);
 
             clip = AudioSystem.getClip();
-            clip.open(audioIn);
-            clip.start();
+            clip.open(audioStream);
             clip.loop(Clip.LOOP_CONTINUOUSLY);
-        } catch (UnsupportedAudioFileException | IOException | LineUnavailableException e) {
+            clip.start();
+
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
+
+
     public void playEffectSound(String filePath) {
         try {
-            File soundFile = new File(filePath);
-            AudioInputStream audioIn = AudioSystem.getAudioInputStream(getClass().getResource(filePath));
+            InputStream audioSrc = getClass().getResourceAsStream(filePath);
+            if (audioSrc == null) {
+                System.out.println("Effect sound not found: " + filePath);
+                return;
+            }
 
-            Clip clip = AudioSystem.getClip();
-            clip.open(audioIn);
-            clip.start();
-        } catch (UnsupportedAudioFileException | IOException | LineUnavailableException e) {
+            InputStream bufferedIn = new BufferedInputStream(audioSrc);
+            AudioInputStream effectStream = AudioSystem.getAudioInputStream(bufferedIn);
+            Clip effectClip = AudioSystem.getClip();
+            effectClip.open(effectStream);
+            effectClip.start();
+        } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    public void pauseBackgroundMusic() {
+        if (clip != null && clip.isActive()) {
+            currentFrame = clip.getMicrosecondPosition();
+            clip.stop();
+
+        }
+    }
+
+    public void resumeBackgroundMusic() {
+        if (clip != null && !clip.isActive()) {
+            clip.setMicrosecondPosition(currentFrame != null ? currentFrame : 0);
+            clip.start();
+            clip.loop(Clip.LOOP_CONTINUOUSLY);
         }
     }
 
     public void stopMusic() {
-        if (clip != null && clip.isRunning()){
+        if (clip != null) {
             clip.stop();
-            }
+            clip.close();
+            currentFrame = 0l;
+        }else {
+            System.out.println("clip is null");
         }
     }
+}
