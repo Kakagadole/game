@@ -30,23 +30,19 @@ public class Menu extends JPanel {
 
         backgroundLabel.add(buttonPanel);
 
-        MUSIC gameMusic = new MUSIC();
-
         startButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
                 frame.getContentPane().removeAll();
-
-                SpaceInvaders gamePanel = new SpaceInvaders(gameMusic);
-
-
+                LevelTwo gamePanel = new LevelTwo();
+                Music gameMusic = new Music();
+                gameMusic.gameMusic("SOUND/space-invaders-classic-arcade-game-116826.wav");
                 frame.add(gamePanel);
                 frame.revalidate();
                 frame.repaint();
                 gamePanel.requestFocus();
             }
         });
-
         ruleButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -68,8 +64,6 @@ public class Menu extends JPanel {
                 "Space Invaders Rules:\n\n" +
                         "- Use Left & Right Arrows To Move.\n" +
                         "- Press Space Bar To Shoot Lasers.\n" +
-                        "- Press On P To Pause The Game.\n"+
-                        "- Press On R To Restart The Game.\n"+
                         "- Destroy All Aliens Before They Catch You.\n" +
                         "- You Lose If Aliens Reach You.\n" +
                         "- Try To Get As Many Points As You Can. Good Luck!"
@@ -80,3 +74,5 @@ public class Menu extends JPanel {
         rulesFrame.setVisible(true);
     }
 }
+
+

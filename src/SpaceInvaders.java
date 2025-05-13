@@ -2,17 +2,11 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Random;
 
 public class SpaceInvaders extends JPanel implements Runnable, KeyListener {
-    private LevelManager levelManager = new LevelManager();
-    private boolean showLevelText = true;
-    private long levelDisplayStartTime;
-    MUSIC getBackgroundMusic;
-
-
-
-
     int tileSize = 32;
     int rows = 16;
     int columns = 16;
@@ -27,12 +21,14 @@ public class SpaceInvaders extends JPanel implements Runnable, KeyListener {
     ArrayList<Image> alienImgArray;
 
     class Block {
-        int x, y, width, height;
+        float x, y;
+        int width, height;
         Image img;
         boolean alive = true;
         boolean used = false;
+        boolean canShoot = false;
 
-        Block(int x, int y, int width, int height, Image img) {
+        Block(float x, float y, int width, int height, Image img) {
             this.x = x;
             this.y = y;
             this.width = width;
@@ -43,8 +39,8 @@ public class SpaceInvaders extends JPanel implements Runnable, KeyListener {
 
     int shipWidth = tileSize * 2;
     int shipHeight = tileSize * 2;
-    int shipX = tileSize * columns / 2 - tileSize;
-    int shipY = (tileSize * rows - tileSize * 3);
+    float shipX = tileSize * columns / 2 - tileSize;
+    float shipY = (tileSize * rows - tileSize * 3);
     int shipVelocityX = tileSize;
     Block ship;
 
@@ -63,23 +59,24 @@ public class SpaceInvaders extends JPanel implements Runnable, KeyListener {
     int bulletHeight = tileSize / 2;
     int bulletVelocityY = -10;
 
+    ArrayList<Block> alienBulletArray;
+    float alienBulletSpeed = 88f; // pixels per second
+    float fps = 60f;
+    float alienBulletVelocityY = alienBulletSpeed / fps;
+
     Thread gameThread;
     boolean gameOver = false;
-    boolean isRunning = true;
     int score = 0;
+    int currentLevel = 0;
+    int wavesCompleted = 0; // מעקב אחר מספר הגלים
+    boolean isTransitioning = false;
+    long transitionStartTime;
+    long lastAlienShotTime = 0;
 
-    ImageIcon backgroundGif = new ImageIcon(getClass().getResource("/BackGround/Black And White Falling GIF by Pi-Slices.gif"));
+    ImageIcon backgroundGif = new ImageIcon(getClass().getResource("BackGround/Black And White Falling GIF by Pi-Slices.gif"));
     Image backgroundImage = backgroundGif.getImage();
 
-    MUSIC backgroundMusic = new MUSIC();
-    boolean gameOverSoundPlayed = false;
-
-    public SpaceInvaders(MUSIC music) {
-        this.backgroundMusic = music;
-
-        backgroundMusic.gameMusic("/SOUND/space-invaders-classic-arcade-game-116826.wav");
-
-
+    public SpaceInvaders() {
         setPreferredSize(new Dimension(boardWidth, boardHeight));
         setFocusable(true);
         addKeyListener(this);
@@ -99,8 +96,7 @@ public class SpaceInvaders extends JPanel implements Runnable, KeyListener {
         ship = new Block(shipX, shipY, shipWidth, shipHeight, shipImg);
         alienArray = new ArrayList<>();
         bulletArray = new ArrayList<>();
-
-
+        alienBulletArray = new ArrayList<>();
 
         createAliens();
 
@@ -114,23 +110,28 @@ public class SpaceInvaders extends JPanel implements Runnable, KeyListener {
         long targetTime = 1000 / fps;
 
         while (true) {
-            if (isRunning) {
+            if (!isTransitioning && !gameOver) {
                 move();
-                repaint();
+            }
+            repaint();
 
-                if (gameOver) {
-                    if (!gameOverSoundPlayed) {
-                        backgroundMusic.stopMusic();
-                        backgroundMusic.playEffectSound("/SOUND/game-over.wav");
-                        gameOverSoundPlayed = true;
-                    }
-
-                    try {
-                        Thread.sleep(2000);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                    break;
+            if (gameOver) {
+                try {
+                    Thread.sleep(2000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                break;
+            } else if (isTransitioning) {
+                if (System.currentTimeMillis() - transitionStartTime >= 2000) {
+                    isTransitioning = false;
+                    currentLevel = 2;
+                    alienColumns = 3;
+                    alienRows = 2;
+                    alienArray.clear();
+                    bulletArray.clear();
+                    alienBulletArray.clear();
+                    createAliens();
                 }
             }
 
@@ -146,63 +147,52 @@ public class SpaceInvaders extends JPanel implements Runnable, KeyListener {
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         g.drawImage(backgroundImage, 0, 0, getWidth(), getHeight(), this);
-        draw(g);
-
-        if (gameOver && !gameOverSoundPlayed) {
-
-            backgroundMusic.playEffectSound("/SOUND/game-over-31-179699.wav");
-            gameOverSoundPlayed = true;
+        if (isTransitioning) {
+            g.setColor(Color.white);
+            g.setFont(new Font("Arial", Font.BOLD, 48));
+            g.drawString("Level 2", boardWidth / 2 - 50, boardHeight / 2);
+        } else {
+            draw(g);
+        }
+        // בדיקה לקליעות חייזרים בשלב הראשון (לדיבוג)
+        if (currentLevel == 1 && !alienBulletArray.isEmpty()) {
+            System.out.println("Warning: Alien bullets in level 1");
         }
     }
 
     public void draw(Graphics g) {
-        g.drawImage(ship.img, ship.x, ship.y, ship.width, ship.height, null);
+        g.drawImage(ship.img, (int)ship.x, (int)ship.y, ship.width, ship.height, null);
 
         for (Block alien : alienArray) {
             if (alien.alive) {
-                g.drawImage(alien.img, alien.x, alien.y, alien.width, alien.height, null);
+                g.drawImage(alien.img, (int)alien.x, (int)alien.y, alien.width, alien.height, null);
             }
         }
 
         g.setColor(Color.red);
         for (Block bullet : bulletArray) {
             if (!bullet.used) {
-                g.fillRect(bullet.x, bullet.y, bullet.width / 2, bullet.height * 2);
+                g.fillRect((int)bullet.x, (int)bullet.y, bullet.width / 2, bullet.height * 2);
             }
+        }
+
+        g.setColor(Color.green);
+        for (Block alienBullet : alienBulletArray) {
+            g.fillRect((int)alienBullet.x, (int)alienBullet.y, alienBullet.width / 2, alienBullet.height * 2);
         }
 
         g.setColor(Color.white);
         g.setFont(new Font("Arial", Font.PLAIN, 32));
-
         if (gameOver) {
-
-            g.setFont(new Font("Arial", Font.BOLD, 64));
-            FontMetrics fm = g.getFontMetrics();
-            String gameOverText = "GAME OVER";
-            int x = (boardWidth - fm.stringWidth(gameOverText)) / 2;
-            int y = boardHeight / 2;
-            g.drawString(gameOverText, x, y);
-
-            g.setFont(new Font("Arial", Font.PLAIN, 32));
-            String scoreText = "Score: " + score;
-            int scoreX = (boardWidth - g.getFontMetrics().stringWidth(scoreText)) / 2;
-            g.drawString(scoreText, scoreX, y + 50);
+            g.drawString("Game Over: " + score, 10, 35);
         } else {
-            g.drawString("Score: " + score, 10, 35);
-        }
-
-        if (!isRunning && !gameOver) {
-            g.setColor(Color.WHITE);
-            g.setFont(new Font("Arial", Font.BOLD, 48));
-            FontMetrics fm = g.getFontMetrics();
-            String pauseText = "Game Paused";
-            int x = (boardWidth - fm.stringWidth(pauseText)) / 2;
-            int y = boardHeight / 2;
-            g.drawString(pauseText, x, y);
+            g.drawString(String.valueOf(score), 10, 35);
         }
     }
 
     public void move() {
+        System.out.println("Current level: " + currentLevel);
+
         for (Block alien : alienArray) {
             if (alien.alive) {
                 alien.x += alienVelocityX;
@@ -223,28 +213,85 @@ public class SpaceInvaders extends JPanel implements Runnable, KeyListener {
 
         for (Block bullet : bulletArray) {
             bullet.y += bulletVelocityY;
+        }
 
-            for (Block alien : alienArray) {
-                if (!bullet.used && alien.alive && detectCollision(bullet, alien)) {
-                    bullet.used = true;
-                    alien.alive = false;
-                    alienCount--;
-                    score += 100;
+        for (Block bullet : new ArrayList<>(bulletArray)) {
+            if (!bullet.used && bullet.y >= 0) {
+                for (Block alien : alienArray) {
+                    if (alien.alive && detectCollision(bullet, alien)) {
+                        bullet.used = true;
+                        alien.alive = false;
+                        alienCount--;
+                        score += 100;
+                        break;
+                    }
+                }
+            }
+        }
+        bulletArray.removeIf(bullet -> bullet.used || bullet.y < 0);
+
+        if (currentLevel == 2) {
+            long currentTime = System.currentTimeMillis();
+            if (currentTime - lastAlienShotTime >= 2000) {
+                List<Block> activeShooters = new ArrayList<>();
+                for (Block alien : alienArray) {
+                    if (alien.alive && alien.canShoot) {
+                        activeShooters.add(alien);
+                    }
+                }
+                if (!activeShooters.isEmpty()) {
+                    Random random = new Random();
+                    int index = random.nextInt(activeShooters.size());
+                    Block shooter = activeShooters.get(index);
+                    float bulletX = shooter.x + shooter.width / 2f - bulletWidth / 2f;
+                    float bulletY = shooter.y + shooter.height;
+                    Block alienBullet = new Block(bulletX, bulletY, bulletWidth, bulletHeight, null);
+                    alienBulletArray.add(alienBullet);
+                    lastAlienShotTime = currentTime;
+                    System.out.println("Alien shooting in level 2");
                 }
             }
         }
 
-        bulletArray.removeIf(b -> b.used || b.y < 0);
-
-        if (alienCount == 0) {
-            score += alienColumns * alienRows * 100;
-            alienColumns = Math.min(alienColumns + 1, columns / 2 - 2);
-            alienRows = Math.min(alienRows + 1, rows - 6);
-            alienArray.clear();
-            bulletArray.clear();
-            createAliens();
+        for (Block alienBullet : new ArrayList<>(alienBulletArray)) {
+            alienBullet.y += alienBulletVelocityY;
+            if (detectCollision(alienBullet, ship)) {
+                gameOver = true;
+                alienBulletArray.remove(alienBullet);
+            } else if (alienBullet.y > boardHeight) {
+                alienBulletArray.remove(alienBullet);
+            }
         }
 
+        if (alienCount == 0) {
+            score += alienColumns * alienRows * 100; // בונוס עבור השלמת גל
+            if (currentLevel == 1) {
+                wavesCompleted++;
+                if (score>= 8200) {
+                    // מעבר לשלב 2
+                    alienBulletArray.clear(); // ניקוי קליעות חייזרים קיימות
+                    isTransitioning = true;
+                    transitionStartTime = System.currentTimeMillis();
+                } else {
+                    // צור גל חדש עבור שלב 1
+                    alienColumns = Math.min(alienColumns + 1, columns / 2 - 2);
+                    alienRows = Math.min(alienRows + 1, rows - 6);
+                    alienArray.clear();
+                    bulletArray.clear();
+                    alienBulletArray.clear(); // ניקוי קליעות חייזרים
+                    createAliens(); // שלב 1, ללא ירי
+                }
+            } else if (currentLevel == 2) {
+                // צור גל חדש עבור שלב 2
+                alienColumns = Math.min(alienColumns + 1, columns / 2 - 2);
+                alienRows = Math.min(alienRows + 1, rows - 6);
+                alienArray.clear();
+                bulletArray.clear();
+                alienBulletArray.clear();
+                createAliens();
+                 resetGame();
+            }
+        }
     }
 
     public void createAliens() {
@@ -253,8 +300,8 @@ public class SpaceInvaders extends JPanel implements Runnable, KeyListener {
             for (int r = 0; r < alienRows; r++) {
                 int randomImgIndex = random.nextInt(alienImgArray.size());
                 Block alien = new Block(
-                        alienX + c * alienWidth,
-                        alienY + r * alienHeight,
+                        (float)(alienX + c * alienWidth),
+                        (float)(alienY + r * alienHeight),
                         alienWidth,
                         alienHeight,
                         alienImgArray.get(randomImgIndex)
@@ -263,6 +310,25 @@ public class SpaceInvaders extends JPanel implements Runnable, KeyListener {
             }
         }
         alienCount = alienArray.size();
+        if (currentLevel == 2) {
+            int numShooters = Math.max(1, alienCount / 6);
+            List<Block> shuffled = new ArrayList<>(alienArray);
+            Collections.shuffle(shuffled);
+            for (int i = 0; i < numShooters; i++) {
+                if (currentLevel == 2) {
+                    shuffled.get(i).canShoot = true;
+                }
+            }
+
+        }
+        // בדיקה לדיבוג: ודא שאין חייזרים יורים בשלב 1
+        if (currentLevel == 1) {
+            for (Block alien : alienArray) {
+                if (alien.canShoot) {
+                    System.out.println("Warning: Alien can shoot in level 1");
+                }
+            }
+        }
     }
 
     public boolean detectCollision(Block a, Block b) {
@@ -273,36 +339,26 @@ public class SpaceInvaders extends JPanel implements Runnable, KeyListener {
     }
 
     @Override
-    public void keyPressed(KeyEvent e) {
-    }
+    public void keyPressed(KeyEvent e) {}
 
     @Override
-    public void keyTyped(KeyEvent e) {
-    }
+    public void keyTyped(KeyEvent e) {}
 
     @Override
     public void keyReleased(KeyEvent e) {
-        if (gameOver) {
-            resetGame();
-            gameThread = new Thread(this);
-            gameThread.start();
-        } else if (e.getKeyCode() == KeyEvent.VK_LEFT && ship.x - shipVelocityX >= 0 && isRunning) {
-            ship.x -= shipVelocityX;
-        } else if (e.getKeyCode() == KeyEvent.VK_RIGHT && ship.x + shipVelocityX + ship.width <= boardWidth && isRunning) {
-            ship.x += shipVelocityX;
-        } else if (e.getKeyCode() == KeyEvent.VK_SPACE && isRunning) {
-            Block bullet = new Block(ship.x + shipWidth * 15 / 32, ship.y, bulletWidth, bulletHeight, null);
-            bulletArray.add(bullet);
-            backgroundMusic.playEffectSound("/SOUND/laser-zap-90575.wav");
-        } else if (e.getKeyCode() == KeyEvent.VK_P) {
-            isRunning = !isRunning;
-            if (isRunning) {
-                backgroundMusic.resumeBackgroundMusic();
-            } else {
-                backgroundMusic.pauseBackgroundMusic();
+        if (!isTransitioning && !gameOver) {
+            if (e.getKeyCode() == KeyEvent.VK_LEFT && ship.x - shipVelocityX >= 0) {
+                ship.x -= shipVelocityX;
+            } else if (e.getKeyCode() == KeyEvent.VK_RIGHT && ship.x + shipVelocityX + ship.width <= boardWidth) {
+                ship.x += shipVelocityX;
+            } else if (e.getKeyCode() == KeyEvent.VK_SPACE) {
+                Block bullet = new Block(ship.x + shipWidth * 15f / 32f, ship.y, bulletWidth, bulletHeight, null);
+                bulletArray.add(bullet);
+                Music music = new Music();
+                music.playEffectSound("SOUND/laser-zap-90575.wav");
+            } else if (e.getKeyCode() == KeyEvent.VK_R) {
+                resetGame();
             }
-        } else if (e.getKeyCode() == KeyEvent.VK_R) {
-            resetGame();
         }
     }
 
@@ -311,14 +367,16 @@ public class SpaceInvaders extends JPanel implements Runnable, KeyListener {
         bulletArray.clear();
         alienArray.clear();
         gameOver = false;
-        isRunning = true;
         score = 0;
         alienColumns = 3;
         alienRows = 2;
         alienVelocityX = 1;
+        currentLevel = 1;
+        wavesCompleted = 0;
         createAliens();
-        gameOverSoundPlayed = false;
-        backgroundMusic.stopMusic();
-        backgroundMusic.gameMusic("/SOUND/space-invaders-classic-arcade-game-116826.wav");
+        move();
+
+
+
     }
 }
